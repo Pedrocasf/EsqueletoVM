@@ -12,4 +12,5 @@ _deps
 build/
 vscode/
 .idea/
-cmake-build-*/
+cmake-build-release/
+cmake-build-debug/
