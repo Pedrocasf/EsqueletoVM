@@ -14,9 +14,10 @@
 typedef struct VM_state{
     uint32_t* pc;
     uint32_t* x;
-    void* memory;
+    uint8_t* memory;
     uint32_t* csr;
 }VM_state;
 void build_vm_state(VM_state** state, char* rom_name);
+static inline __attribute__((always_inline)) void fetch_decode(uint32_t* pc, uint32_t*x, uint8_t*mem);
 void begin(VM_state* state);
 #endif //ESQUELETOVM_RV32I_H
