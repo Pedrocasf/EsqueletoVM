@@ -13,6 +13,21 @@ const uint32_t CSR_COUNT = 4 * KIB_SIZE;
 const uint32_t X_COUNT = 32;
 static uint32_t size= 0;
 static uintptr_t io_addr = 0;
+static uintptr_t read_slot = 0;
+static uint32_t write_slot = 0;
+typedef enum{
+    R_BYTE,
+    R_HALF,
+    R_WORD,
+    R_DWORD,
+    W_BYTE,
+    W_HALF,
+    W_WORD,
+    W_DWORD,
+    NONE
+} ReadWriteKind;
+static ReadWriteKind RWK_slot = NONE;
+static jmp_buf  context;
 void build_vm_state(VM_state** state, char* rom_name){
     uint32_t page_size = getpagesize();
     printf("page size is %d bytes\n",page_size);
@@ -82,7 +97,7 @@ void HALT(uint32_t* pc, uint32_t* x, uint8_t* mem){
     uint8_t instr = rearrange(*pc);
     printf("rearranged instr %08bb %d \n", instr, instr);
     printf("HALTED at addr  %08llX\n",((uint8_t*)pc-mem));
-    munmap(mem,size);
+    munmap(mem,4*GiB_SIZE);
     free(x);
     exit(-3);
 };
@@ -126,6 +141,8 @@ void LB(uint32_t* pc, uint32_t* x, uint8_t* mem){
     uint32_t instr = *pc;
     uint8_t reg_src1 = rs1(instr);
     uint8_t reg_dest = rd(instr);
+    RWK_slot = R_BYTE;
+    read_slot = (uintptr_t)x+reg_dest;
     *(x+reg_dest) = *(mem+(*(x+reg_src1) + i_imm(instr)));
     return fetch_decode(++pc,x,mem);
 }
@@ -134,17 +151,37 @@ void SB(uint32_t* pc, uint32_t* x, uint8_t* mem){
     uint32_t instr = *pc;
     uint8_t reg_src1 = rs1(instr);
     uint8_t reg_src2 = rs2(instr);
-    *(mem+*(x+reg_src1)+s_imm(instr)) = reg_src2;
-    return fetch_decode(++pc,x,mem);
+    if(!setjmp(context)){
+        RWK_slot = W_BYTE;
+        write_slot = (uint8_t)*(x+reg_src2);
+        *(mem+*(x+reg_src1)+s_imm(instr)) = (uint8_t)*(x+reg_src2);
+    }else{
+        return fetch_decode(++pc,x,mem);
+    }
+
 }
 
 void catch_sigsegv(int sig, siginfo_t *info, void *ucontext) {
     printf ("\n Signal %d received",sig);
     uintptr_t addr = (uintptr_t)(void*)info->si_addr;
     printf ("\n at address %lx",addr);
-    uintptr_t mmio_addr = addr -io_addr;
+    uintptr_t mmio_addr = addr - io_addr;
     printf ("\n at IO address %lx",mmio_addr);
-    exit(-5);
+    switch (mmio_addr) {
+        case 0:
+            if (RWK_slot == W_BYTE) {
+                printf("\n%c\n", (uint8_t)write_slot);
+            }
+            break;
+        case 4:
+            if (RWK_slot == W_WORD){
+                if (write_slot == 0x00005555){
+                    exit(0);
+                }
+            }
+            break;
+    }
+    longjmp(context, 1);
 }
 
 void (*decode_table[256])(uint32_t* pc, uint32_t* x, uint8_t* mem) = {
