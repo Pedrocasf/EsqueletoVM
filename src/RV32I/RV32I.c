@@ -7,8 +7,11 @@ const uint32_t KIB_SIZE = 1024;
 const uint32_t MiB_SIZE = 1024 * KIB_SIZE;
 const uint32_t GiB_SIZE = 1024 * MiB_SIZE;
 const uint32_t MAX_ROM_SIZE = 64 * MiB_SIZE;
-const uint32_t CSR_COUNT = 4 * KIB_SIZE;
-const uint32_t VIO_ADDR = 256 * MiB_SIZE;
+const uint32_t RAM_ADDR = 256 * MiB_SIZE;
+const uint32_t RAM_LEN = 128*KIB_SIZE;
+const uint32_t ROM_ADDR = 512* MiB_SIZE;
+const uint32_t ROM_LEN = MiB_SIZE;
+const uint32_t CSR_COUNT= 4 * KIB_SIZE;
 const uint32_t X_COUNT = 32;
 static uint32_t size= 0;
 static uintptr_t io_addr = 0;
@@ -51,9 +54,10 @@ void build_vm_state(VM_state** state, char* rom_name){
         if(size <= MAX_ROM_SIZE){
             fclose(rom_ptr);
             int rom_fd = open(rom_name,O_RDONLY);
-            (*state)->memory = mmap(NULL, 4+GiB_SIZE,PROT_READ|PROT_EXEC|PROT_WRITE,MAP_PRIVATE,rom_fd,0);
+            (*state)->memory = mmap(NULL, 4+GiB_SIZE,PROT_NONE,MAP_PRIVATE,rom_fd,ROM_ADDR);
             //printf("ALLOCATED Memeory\n");
-            mprotect((*state)->memory+VIO_ADDR,8,PROT_NONE);
+            mprotect((*state)->memory+RAM_ADDR,RAM_LEN,PROT_READ|PROT_WRITE|PROT_EXEC);
+            mprotect((*state)->memory+ROM_ADDR,ROM_LEN,PROT_READ|PROT_EXEC);
             //printf("mprotect mmio\n");
             io_addr = (uintptr_t)(*state)->memory+0x10000000; //- (uintptr_t)(void*)(*state)->memory;
             //printf("set allocated mmio global addr\n");
@@ -65,44 +69,44 @@ void build_vm_state(VM_state** state, char* rom_name){
         }
     }
 }
-static inline __attribute__((always_inline)) uint8_t rearrange(uint32_t instruction){
+uint8_t rearrange(uint32_t instruction){
     return ((instruction & (0x00000007<<12))>>7) | ((instruction>>2)&0x1F);
 }
-static inline __attribute__((always_inline)) uint8_t rd(uint32_t instruction){
+uint8_t rd(uint32_t instruction){
     return (instruction & 0x00000F80) >> 7;
 }
-static inline __attribute__((always_inline)) uint8_t rs1(uint32_t instruction){
+uint8_t rs1(uint32_t instruction){
     return (instruction & 0x000F8000) >> 15;
 }
-static inline __attribute__((always_inline)) uint8_t rs2(uint32_t instruction){
+uint8_t rs2(uint32_t instruction){
     return (instruction & 0x001F00000) >> 20;
 }
-static inline __attribute__((always_inline)) uint32_t u_imm(uint32_t instruction){
+ uint32_t u_imm(uint32_t instruction){
     return instruction & 0xFFFFF000;
 }
-static inline __attribute__((always_inline)) uint32_t i_imm(uint32_t instruction){
+uint32_t i_imm(uint32_t instruction){
     return (((int32_t)instruction)>>20);
 }
-static inline __attribute__((always_inline)) uint8_t shamt(uint32_t instruction){
+uint8_t shamt(uint32_t instruction){
     return i_imm(instruction) & 0x1F;
 }
-static inline __attribute__((always_inline)) int32_t b_imm(uint32_t instruction) {
+int32_t b_imm(uint32_t instruction) {
     return (int32_t)((int32_t)(instruction & 0x80000000) >> 19)
     | ((instruction & 0x80) << 4)
       | ((instruction >> 20) & 0x7e0)
       | ((instruction >> 7) & 0x1e);
 }
-static inline __attribute__((always_inline))  uint32_t s_imm(uint32_t instruction) {
+uint32_t s_imm(uint32_t instruction) {
     return ((int32_t)(instruction & 0xfe000000) >> 20)
            | ((instruction >> 7) & 0x1f);
 }
-static inline __attribute__((always_inline)) int32_t j_imm(uint32_t instruction) {
+int32_t j_imm(uint32_t instruction) {
     return (int32_t) (((int32_t) (instruction & 0x80000000) >> 11)
            | (instruction & 0xff000)
            | ((instruction >> 9) & 0x800)
            | ((instruction >> 20) & 0x7fe));
 }
-static inline __attribute__((always_inline)) bool funct7(uint32_t instruction){
+bool funct7(uint32_t instruction){
     return (instruction & 0x40000000) >> 31;
 }
 static inline __attribute__((always_inline)) void fetch_decode(uint32_t* pc, uint32_t*x, uint8_t*mem, uint32_t* csr);
