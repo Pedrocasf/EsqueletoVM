@@ -13,10 +13,10 @@ int main(int argc, char* argv[]){
         printf("No File to execute specified");
         return -1;
     }
-    printf("Executable path: %s\n",argv[argc-1]);
+    //printf("Executable path: %s\n",argv[argc-1]);
     struct VM_state* RV32I_State = NULL;
     build_vm_state(&RV32I_State, argv[argc-1]);
-    printf("returned from state init\n");
+    //printf("returned from state init\n");
     if(RV32I_State == NULL){
         printf("Couldn't initialize vm state");
         return -2;

@@ -27,13 +27,12 @@ typedef enum{
     NONE
 } ReadWriteKind;
 static ReadWriteKind RWK_slot = NONE;
-static jmp_buf  context;
 void catch_sigsegv(int sig, siginfo_t *info, void *ucontext);
 void build_vm_state(VM_state** state, char* rom_name){
     uint32_t page_size = getpagesize();
-    printf("page size is %d bytes\n",page_size);
+    //printf("page size is %d bytes\n",page_size);
     *state = (VM_state*)calloc(1,sizeof(VM_state));
-    printf("alloc vm state struct\n");
+    //printf("alloc vm state struct\n");
     (*state)->x = calloc(X_COUNT, sizeof(uint32_t));
     //(*state)->csr = calloc(CSR_COUNT, sizeof(uint32_t));
     FILE *rom_ptr = NULL;
@@ -42,7 +41,7 @@ void build_vm_state(VM_state** state, char* rom_name){
         printf("Could not open file '%s'\n",
                   rom_name);
     }else{
-        printf("opened ROM\n");
+        //printf("opened ROM\n");
         fseek(rom_ptr,0L,SEEK_END);
         size = ftell(rom_ptr);
         size = (size/page_size)+1;
@@ -52,13 +51,13 @@ void build_vm_state(VM_state** state, char* rom_name){
             fclose(rom_ptr);
             int rom_fd = open(rom_name,O_RDONLY);
             (*state)->memory = mmap(NULL, 4+GiB_SIZE,PROT_READ|PROT_EXEC|PROT_WRITE,MAP_PRIVATE,rom_fd,0);
-            printf("ALLOCATED Memeory\n");
+            //printf("ALLOCATED Memeory\n");
             mprotect((*state)->memory+0x10000000,8,PROT_NONE);
-            printf("mprotect mmio\n");
+            //printf("mprotect mmio\n");
             io_addr = (uintptr_t)(*state)->memory+0x10000000; //- (uintptr_t)(void*)(*state)->memory;
-            printf("set allocated mmio global addr\n");
+            //printf("set allocated mmio global addr\n");
             //close(rom_fd);
-            printf("returning from state init\n");
+            //printf("returning from state init\n");
             return;
         }else{
             printf("ROM file too big\n");
@@ -103,21 +102,21 @@ void HALT(uint32_t* pc, uint32_t* x, uint8_t* mem){
     exit(-3);
 };
 void AUIPC (uint32_t* pc, uint32_t* x, uint8_t* mem){
-    printf("AUIPC\n");
+    //printf("AUIPC\n");
     uint32_t instr =  *pc;
     uint8_t reg_dest = rd(instr);
     *(x+reg_dest) = u_imm(instr)+ ((uint8_t*)pc-mem);;
     return fetch_decode(++pc,x,mem);
 }
 void LUI (uint32_t* pc, uint32_t* x, uint8_t* mem){
-    printf("LUI\n");
+    //printf("LUI\n");
     uint32_t instr =  *pc;
     uint8_t reg_dest = rd(instr);
     *(x+reg_dest) = u_imm(instr);
     return fetch_decode(++pc,x,mem);
 }
 void ADDI(uint32_t* pc, uint32_t* x, uint8_t* mem){
-    printf("ADDI\n");
+    //printf("ADDI\n");
     uint32_t instr = *pc;
     uint8_t reg_dest = rd(instr);
     uint8_t reg_src = rs1(instr);
@@ -126,7 +125,7 @@ void ADDI(uint32_t* pc, uint32_t* x, uint8_t* mem){
 }
 
 void BEQ (uint32_t* pc, uint32_t* x, uint8_t* mem){
-    printf("BEQ\n");
+    //printf("BEQ\n");
     uint32_t instr = *pc;
     uint8_t reg_src1 = rs1(instr);
     uint8_t reg_src2 = rs2(instr);
@@ -138,15 +137,13 @@ void BEQ (uint32_t* pc, uint32_t* x, uint8_t* mem){
     }
 }
 void LB(uint32_t* pc, uint32_t* x, uint8_t* mem){
-    printf("LB\n");
+    //printf("LB\n");
     uint32_t instr = *pc;
     uint8_t reg_src1 = rs1(instr);
     uint8_t reg_dest = rd(instr);
-    if(setjmp(context) == 0){
-        RWK_slot = R_BYTE;
-        read_slot = (uintptr_t)x+reg_dest;
-        *(x+reg_dest) = *(mem+(*(x+reg_src1) + i_imm(instr)));
-    }
+    RWK_slot = R_BYTE;
+    read_slot = (uintptr_t)x+reg_dest;
+    *(x+reg_dest) = *(mem+(*(x+reg_src1) + i_imm(instr)));
     return fetch_decode(++pc,x,mem);
 }
 void SB(uint32_t* pc, uint32_t* x, uint8_t* mem){
@@ -154,19 +151,31 @@ void SB(uint32_t* pc, uint32_t* x, uint8_t* mem){
     act.sa_sigaction = catch_sigsegv;
     act.sa_flags = SA_SIGINFO;
     sigaction(SIGSEGV, &act, &act);
-    printf("SB\n");
+    //printf("SB\n");
     uint32_t instr = *pc;
     uint8_t reg_src1 = rs1(instr);
     uint8_t reg_src2 = rs2(instr);
-    if(setjmp(context) == 0){
-        RWK_slot = W_BYTE;
-        write_slot = (uint8_t)*(x+reg_src2);
-        *(mem+*(x+reg_src1)+s_imm(instr)) = (uint8_t)*(x+reg_src2);
-    }
+    RWK_slot = W_BYTE;
+    write_slot = (uint8_t)*(x+reg_src2);
+    *(mem+*(x+reg_src1)+s_imm(instr)) = (uint8_t)*(x+reg_src2);
+    return fetch_decode(++pc,x,mem);
+}
+void SW(uint32_t* pc, uint32_t* x, uint8_t* mem){
+    struct sigaction act = {0};
+    act.sa_sigaction = catch_sigsegv;
+    act.sa_flags = SA_SIGINFO;
+    sigaction(SIGSEGV, &act, &act);
+    //printf("SW\n");
+    uint32_t instr = *pc;
+    uint8_t reg_src1 = rs1(instr);
+    uint8_t reg_src2 = rs2(instr);
+    RWK_slot = W_WORD;
+    write_slot = *(x+reg_src2);
+    *( uint32_t *)(mem+*(x+reg_src1)+s_imm(instr)) = *(x+reg_src2);
     return fetch_decode(++pc,x,mem);
 }
 void BNE (uint32_t* pc, uint32_t* x, uint8_t* mem){
-    printf("BNE\n");
+    //printf("BNE\n");
     uint32_t instr = *pc;
     uint8_t reg_src1 = rs1(instr);
     uint8_t reg_src2 = rs2(instr);
@@ -178,25 +187,27 @@ void BNE (uint32_t* pc, uint32_t* x, uint8_t* mem){
     }
 }
 void catch_sigsegv(int sig, siginfo_t *info, void *ucontext) {
-    printf ("\n Signal %d received",sig);
+    ucontext_t *ctx = (ucontext_t *)ucontext;
+    //printf ("\n Signal %d received",sig);
     uintptr_t addr = (uintptr_t)(void*)info->si_addr;
-    printf ("\n at address %lx",addr);
+    //printf ("\n at address %lx",addr);
     uintptr_t mmio_addr = addr - io_addr;
-    printf ("\n at IO address %lx",mmio_addr);
+    //printf ("\n at IO address %lx",mmio_addr);
     switch (mmio_addr) {
         case 0:
             if (RWK_slot == W_BYTE) {
-                printf("\n%c\n", (uint8_t)write_slot);
+                printf("%c", (uint8_t) write_slot);
             }
             break;
         case 4:
-            if (RWK_slot == W_WORD){
-                if (write_slot == 0x00005555){
+            if (RWK_slot == W_WORD) {
+                if (write_slot == 0x00005555) {
                     exit(0);
                 }
             }
             break;
     }
+    (ctx->uc_mcontext.pc) += 4;
 }
 
 void (*decode_table[256])(uint32_t* pc, uint32_t* x, uint8_t* mem) = {
@@ -272,7 +283,7 @@ void (*decode_table[256])(uint32_t* pc, uint32_t* x, uint8_t* mem) = {
    AUIPC,
    HALT,
    HALT,
-   HALT,
+   SW,
    HALT,
    HALT,
    HALT,
@@ -458,18 +469,18 @@ void (*decode_table[256])(uint32_t* pc, uint32_t* x, uint8_t* mem) = {
    HALT
 };
 static inline __attribute__((always_inline)) void fetch_decode(uint32_t* pc, uint32_t*x, uint8_t*mem){
-    printf("PC:%08llX INSTR:%08llX RE:%02llX\n", ((uint8_t*)pc-mem), *pc, rearrange(*pc));
+    //printf("PC:%08llX INSTR:%08llX RE:%02llX\n", ((uint8_t*)pc-mem), *pc, rearrange(*pc));
     *x = 0;
     return (decode_table[rearrange(*pc)])(pc,x,mem);
 }
 void begin(VM_state* state){
-    printf("begin vm execution");
+    //printf("begin vm execution");
     struct sigaction act = {0};
     act.sa_sigaction = catch_sigsegv;
     act.sa_flags = SA_SIGINFO;
     sigaction(SIGSEGV, &act, &act);
     state->pc = ( uint32_t *)state->memory;
-    printf("full instr %032bb  %08hhX\n", *state->pc, *state->pc);
+    //printf("full instr %032bb  %08hhX\n", *state->pc, *state->pc);
     //uint8_t actual_instr = rearrange(*state->pc);
     //printf("rearranged instr %08bb\n", actual_instr);
     fetch_decode(state->pc, state->x, state->memory);
