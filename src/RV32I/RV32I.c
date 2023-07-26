@@ -14,6 +14,8 @@ static uint32_t size= 0;
 static uintptr_t io_addr = 0;
 static uintptr_t read_slot = 0;
 static uint32_t write_slot = 0;
+#ifdef _WIN32
+#endif
 typedef enum{
     R_BYTE,
     R_HALF,
@@ -504,10 +506,14 @@ static inline __attribute__((always_inline)) void fetch_decode(uint32_t* pc, uin
 }
 void begin(VM_state* state){
     //printf("begin vm execution");
+#ifndef _WIN32
     struct sigaction act = {0};
     act.sa_sigaction = catch_sigsegv;
     act.sa_flags = SA_SIGINFO;
     sigaction(SIGSEGV, &act, &act);
+#else
+
+#endif
     state->pc = ( uint32_t *)state->memory;
     //printf("full instr %032bb  %08hhX\n", *state->pc, *state->pc);
     //uint8_t actual_instr = rearrange(*state->pc);
