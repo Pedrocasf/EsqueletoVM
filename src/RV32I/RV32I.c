@@ -28,6 +28,7 @@ typedef enum{
 } ReadWriteKind;
 static ReadWriteKind RWK_slot = NONE;
 static jmp_buf  context;
+void catch_sigsegv(int sig, siginfo_t *info, void *ucontext);
 void build_vm_state(VM_state** state, char* rom_name){
     uint32_t page_size = getpagesize();
     printf("page size is %d bytes\n",page_size);
@@ -65,7 +66,7 @@ void build_vm_state(VM_state** state, char* rom_name){
     }
 }
 static inline __attribute__((always_inline)) uint8_t rearrange(uint32_t instruction){
-    return ((instruction & (0x7<<12))>>5) | ((instruction>>2)&0x1F);
+    return ((instruction & (0x00000007<<12))>>7) | ((instruction>>2)&0x1F);
 }
 static inline __attribute__((always_inline)) uint8_t rd(uint32_t instruction){
     return (instruction & 0x00000F80) >> 7;
@@ -82,7 +83,7 @@ static inline __attribute__((always_inline)) uint32_t u_imm(uint32_t instruction
 static inline __attribute__((always_inline)) uint32_t i_imm(uint32_t instruction){
     return (((int32_t)instruction)>>20);
 }
-static inline __attribute__((always_inline)) uint32_t b_imm(uint32_t instruction) {
+static inline __attribute__((always_inline)) int32_t b_imm(uint32_t instruction) {
     return ((int32_t)(instruction & 0x80000000) >> 19)
     | ((instruction & 0x80) << 4)
       | ((instruction >> 20) & 0x7e0)
@@ -141,26 +142,41 @@ void LB(uint32_t* pc, uint32_t* x, uint8_t* mem){
     uint32_t instr = *pc;
     uint8_t reg_src1 = rs1(instr);
     uint8_t reg_dest = rd(instr);
-    RWK_slot = R_BYTE;
-    read_slot = (uintptr_t)x+reg_dest;
-    *(x+reg_dest) = *(mem+(*(x+reg_src1) + i_imm(instr)));
+    if(setjmp(context) == 0){
+        RWK_slot = R_BYTE;
+        read_slot = (uintptr_t)x+reg_dest;
+        *(x+reg_dest) = *(mem+(*(x+reg_src1) + i_imm(instr)));
+    }
     return fetch_decode(++pc,x,mem);
 }
 void SB(uint32_t* pc, uint32_t* x, uint8_t* mem){
+    struct sigaction act = {0};
+    act.sa_sigaction = catch_sigsegv;
+    act.sa_flags = SA_SIGINFO;
+    sigaction(SIGSEGV, &act, &act);
     printf("SB\n");
     uint32_t instr = *pc;
     uint8_t reg_src1 = rs1(instr);
     uint8_t reg_src2 = rs2(instr);
-    if(!setjmp(context)){
+    if(setjmp(context) == 0){
         RWK_slot = W_BYTE;
         write_slot = (uint8_t)*(x+reg_src2);
         *(mem+*(x+reg_src1)+s_imm(instr)) = (uint8_t)*(x+reg_src2);
+    }
+    return fetch_decode(++pc,x,mem);
+}
+void BNE (uint32_t* pc, uint32_t* x, uint8_t* mem){
+    printf("BNE\n");
+    uint32_t instr = *pc;
+    uint8_t reg_src1 = rs1(instr);
+    uint8_t reg_src2 = rs2(instr);
+    if(*(x+reg_src1) != *(x+reg_src2)){
+        pc+= b_imm(instr)>>2;
+        return fetch_decode(pc,x,mem);
     }else{
         return fetch_decode(++pc,x,mem);
     }
-
 }
-
 void catch_sigsegv(int sig, siginfo_t *info, void *ucontext) {
     printf ("\n Signal %d received",sig);
     uintptr_t addr = (uintptr_t)(void*)info->si_addr;
@@ -181,7 +197,6 @@ void catch_sigsegv(int sig, siginfo_t *info, void *ucontext) {
             }
             break;
     }
-    longjmp(context, 1);
 }
 
 void (*decode_table[256])(uint32_t* pc, uint32_t* x, uint8_t* mem) = {
@@ -241,7 +256,7 @@ void (*decode_table[256])(uint32_t* pc, uint32_t* x, uint8_t* mem) = {
    HALT,
    HALT,
    HALT,
-   HALT,
+   BNE,
    HALT,
    HALT,
    HALT,
@@ -452,7 +467,7 @@ void begin(VM_state* state){
     struct sigaction act = {0};
     act.sa_sigaction = catch_sigsegv;
     act.sa_flags = SA_SIGINFO;
-    sigaction(SIGSEGV, &act, NULL);
+    sigaction(SIGSEGV, &act, &act);
     state->pc = ( uint32_t *)state->memory;
     printf("full instr %032bb  %08hhX\n", *state->pc, *state->pc);
     //uint8_t actual_instr = rearrange(*state->pc);
