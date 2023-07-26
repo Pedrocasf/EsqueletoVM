@@ -1,0 +1,24 @@
+
+executables/hello.elf:     file format elf32-littleriscv
+
+
+Disassembly of section .text:
+
+00000000 <.text>:
+   0:	00001117          	auipc	x2,0x1
+   4:	06010113          	addi	x2,x2,96 # 0x1060
+   8:	00000537          	lui	x10,0x0
+   c:	05050513          	addi	x10,x10,80 # 0x50
+  10:	00c00593          	addi	x11,x0,12
+  14:	10000637          	lui	x12,0x10000
+  18:	00058c63          	beq	x11,x0,0x30
+  1c:	00050683          	lb	x13,0(x10)
+  20:	00d60023          	sb	x13,0(x12) # 0x10000000
+  24:	fff58593          	addi	x11,x11,-1
+  28:	00150513          	addi	x10,x10,1
+  2c:	fe0598e3          	bne	x11,x0,0x1c
+  30:	00005537          	lui	x10,0x5
+  34:	55550513          	addi	x10,x10,1365 # 0x5555
+  38:	100005b7          	lui	x11,0x10000
+  3c:	00a5a223          	sw	x10,4(x11) # 0x10000004
+  40:	0000006f          	jal	x0,0x40

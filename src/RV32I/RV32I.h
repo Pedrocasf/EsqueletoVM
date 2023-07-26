@@ -10,12 +10,17 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
+#include <linux/mman.h>
+#include <sys/mman.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <signal.h>
 #include "async.h"
 typedef struct VM_state{
     uint32_t* pc;
     uint32_t* x;
     uint8_t* memory;
-    uint32_t* csr;
+    //uint32_t* csr;
 }VM_state;
 void build_vm_state(VM_state** state, char* rom_name);
 static inline __attribute__((always_inline)) void fetch_decode(uint32_t* pc, uint32_t*x, uint8_t*mem);
