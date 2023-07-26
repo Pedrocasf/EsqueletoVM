@@ -228,7 +228,15 @@ void catch_sigsegv(int sig, siginfo_t *info, void *ucontext) {
             }
             break;
     }
+#if __x86_64
+    (ctx->uc_mcontext.gregs[16]) += 4;
+#elif __aarch64__
     (ctx->uc_mcontext.pc) += 4;
+#elif __riscv
+    (ctx->uc_mcontext.__gregs[1]) += 4;
+#else
+#error "only x86_64, arm64 and RISC-V64 supported"
+#endif
 }
 
 void (*decode_table[256])(uint32_t* pc, uint32_t* x, uint8_t* mem, uint32_t* csr) = {
