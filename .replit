@@ -1,5 +1,5 @@
 compile = "cmake -B ./build --fresh && make -C ./build"
-run = "./build/EsqueletoVM ./executables/hello.bin"
+run = "./build/EsqueletoVM ./executables/zephyr.bin"
 hidden = ["main", "main-debug", "**/*.o", "**/*.d", ".ccls-cache", "Makefile"]
 
 [nix]
